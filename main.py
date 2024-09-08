@@ -6,9 +6,8 @@ import sys
 import logging
 import requests
 import xmltodict
-from six.moves import queue as Queue
 import settings
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -16,17 +15,9 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
-class DownloadWorker(Thread):
-    def __init__(self, task_queue: Queue, proxies: dict[str, str] = None) -> None:
-        Thread.__init__(self)
-        self.task_queue = task_queue
+class DownloadWorker:
+    def __init__(self, proxies: dict[str, str] = None) -> None:
         self.proxies = proxies
-
-    def run(self):
-        while True:
-            name, num, start, target_dir = self.task_queue.get()
-            self.download_posts(name, num, start, target_dir)
-            self.task_queue.task_done()
 
     def download_posts(self, name: str, num: int, start: int, target_dir: Path) -> None:
         """Downloads blog posts from Tumblr API."""
@@ -235,36 +226,31 @@ class CrawlerScheduler(object):
     def __init__(self, names: list[str], proxies: dict[str, str] = None) -> None:
         self.names = names
         self.proxies = proxies
-        self.task_queue = Queue.Queue()
-        self.start_workers()
-
-    def start_workers(self) -> None:
-        """Initializes worker threads."""
-        for _ in range(settings.THREADS):
-            worker = DownloadWorker(task_queue=self.task_queue,
-                                    proxies=self.proxies)
-            worker.daemon = True
-            worker.start()
-        logger.info("Started all worker threads")
+        self.worker = DownloadWorker(proxies=self.proxies)
 
     def schedule_tasks(self) -> None:
         """Schedules download tasks for each blog."""
-        for name in self.names:
-            total = self.get_total_post_count(name)
-            if total > 0:
-                self.schedule_blog_download(name, total)
+        with ThreadPoolExecutor(max_workers=settings.THREADS) as executor:
+            futures = []
+            for name in self.names:
+                total = self.get_total_post_count(name)
+                if total > 0:
+                    futures.extend(self.schedule_blog_download(executor, name, total))
 
-    def schedule_blog_download(self, name: str, total: int) -> None:
+            for future in futures:
+                future.result()
+            logger.info("Completed downloading all posts.")
+
+    def schedule_blog_download(self, executor: ThreadPoolExecutor, name: str, total: int) -> list:
         """Schedules the download tasks for a specific blog."""
         target_dir = Path("results") / name
         target_dir.mkdir(parents=True, exist_ok=True)
 
         num = settings.API_READ_NUM
+        futures = []
         for start in range(settings.API_READ_START, total, num):
-            self.task_queue.put((name, num, start, target_dir))
-
-        self.task_queue.join()
-        logger.info(f"Completed downloading all posts for {name}.")
+            futures.append(executor.submit(self.worker.download_posts, name, num, start, target_dir))
+        return futures
 
     def get_total_post_count(self, name: str) -> int:
         """Retrieves the total number of posts for a blog."""
