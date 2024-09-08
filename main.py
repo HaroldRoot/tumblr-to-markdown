@@ -136,32 +136,32 @@ class DownloadWorker:
         """Saves a single post to a file."""
         date_gmt = post.get("@date-gmt", "").split(" ")[0]
         slug = post.get("@slug", "")
-        if slug:
-            filename = f"{date_gmt}-{slug}.md"
-        else:
-            filename = f"{date_gmt}.md"
+        filename = f"{date_gmt}-{slug}.md" if slug else f"{date_gmt}.md"
         file_path = target_dir / filename
 
         table_fields = ['@url-with-slug', '@type', '@date-gmt', '@date']
-        table_rows = "| key           | value                                                              |\n"
-        table_rows += "| ------------- | ------------------------------------------------------------------ |\n"
+        table_rows = (
+            "| key | value |\n"
+            "| --- | ----- |\n"
+        )
 
         for field in table_fields:
             key = field.replace('@', '')
             value = post.get(field, '')
             table_rows += f"| {key:<13} | {value} |\n"
-        md_content = table_rows + "\n"
 
+        md_content = table_rows + "\n"
         post_type = post.get("@type", "")
 
-        if post_type == "Regular":
-            md_content += self.regular_post_to_markdown(post=post, target_dir=target_dir)
-        elif post_type == "Photo":
-            md_content += self.photo_post_to_markdown(post=post, target_dir=target_dir)
-        elif post_type == "Conversation":
-            md_content += self.chat_post_to_markdown(post=post, target_dir=target_dir)
-        else:
-            logger.error(f"Unknown post type: {post_type}")
+        match post_type:
+            case "Regular":
+                md_content += self.regular_post_to_markdown(post=post, target_dir=target_dir)
+            case "Photo":
+                md_content += self.photo_post_to_markdown(post=post, target_dir=target_dir)
+            case "Conversation":
+                md_content += self.chat_post_to_markdown(post=post, target_dir=target_dir)
+            case _:
+                logger.error(f"Unknown post type: {post_type}")
 
         try:
             with file_path.open("w", encoding="utf-8") as f:
