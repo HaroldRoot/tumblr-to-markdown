@@ -1,7 +1,13 @@
 # Tumblr to Markdown
 
 If you want to crawl blogs from `https://somebody.tumblr.com/`,
-just write `somebody` into names.txt and run the following commands in the terminal:
+just write `somebody` into `config.toml`:
+
+```toml
+names = ["somebody"]
+```
+
+and run the following commands in the terminal:
 
 ```shell
 pip install -r requirements.txt

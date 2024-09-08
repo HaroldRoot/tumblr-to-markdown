@@ -1,18 +1,18 @@
-import re
-from pathlib import Path
-import json
-import sys
-
 import logging
+import re
+import sys
+import tomllib
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import requests
 import xmltodict
+
 import settings
-from concurrent.futures import ThreadPoolExecutor
 
 # Configure logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 class DownloadWorker:
@@ -142,10 +142,8 @@ class DownloadWorker:
         file_path = target_dir / filename
 
         table_fields = ['@url-with-slug', '@type', '@date-gmt', '@date']
-        table_rows = (
-            "| key | value |\n"
-            "| --- | ----- |\n"
-        )
+        table_rows = ("| key | value |\n"
+                      "| --- | ----- |\n")
 
         for field in table_fields:
             key = field.replace('@', '')
@@ -275,63 +273,29 @@ class CrawlerScheduler(object):
             return 0
 
 
-def error_proxies() -> None:
-    logger.error("Please check the format of proxies.json. Refer to the example in proxies_example.json.")
-    sys.exit(1)
-
-
-def error_names() -> None:
-    logger.error("Please write the site names in names.txt.\n"
-                 "Multiple site names can be separated by commas, spaces, tabs, or newlines.\n"
-                 "Alternatively, specify the site names using command-line arguments, "
-                 "separated by English commas only.\n"
-                 "For example, run in terminal: python main.py name1,name2")
-    sys.exit(1)
-
-
-def load_names() -> list[str]:
-    current_dir = Path(__file__).resolve().parent
-    names_file = current_dir / "names.txt"
-
-    if len(sys.argv) < 2:
-        try:
-            raw_names = names_file.read_text().strip()
-            names = re.split(r'[,\s]+', raw_names)
-            names = [name for name in names if name]
-        except IOError as e:
-            logger.error(f"Unable to read file {names_file}: {e}")
-            sys.exit(1)
-    else:
-        names = sys.argv[1].split(",")
-
-    if not names or names[0] == "":
-        error_names()
-        sys.exit(1)
-    else:
-        return names
-
-
-def load_proxies() -> dict:
-    current_dir = Path(__file__).resolve().parent
-    proxies_file = current_dir / "proxies.json"
+def load_config() -> dict:
+    config_file = Path(__file__).resolve().parent / "config.toml"
 
     try:
-        with proxies_file.open("r") as f:
-            proxies = json.load(f)
-            if proxies:
-                logger.info(f"Using proxies: {proxies}")
-            return proxies
-    except IOError as e:
-        logger.error(f"Unable to read file {proxies_file}: {e}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error: {e}")
-        error_proxies()
+        with config_file.open("rb") as f:
+            config = tomllib.load(f)
+            logger.info(f"Loaded configuration: {config}")
+            return config
+    except (IOError, tomllib.TOMLDecodeError) as e:
+        logger.error(f"Error reading config file {config_file}: {e}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    names = load_names()
-    proxies = load_proxies()
+    config = load_config()
+    names = config.get("names", [])
+    proxies = config.get("proxies", {})
+
+    if not names:
+        logger.error('''Please write the site names in the config.toml file.
+For example:
+names = ["name1", "name2"]''')
+        sys.exit(1)
+
     scheduler = CrawlerScheduler(names=names, proxies=proxies)
     scheduler.schedule_tasks()
