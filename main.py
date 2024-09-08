@@ -102,7 +102,8 @@ class DownloadWorker:
         markdown = photos + caption + "\n" + tag_str
         return markdown
 
-    def download_photo(self, url: str, target_dir: Path) -> str:
+    @staticmethod
+    def download_photo(url: str, target_dir: Path) -> str:
         if not url:
             return ""
 
@@ -120,7 +121,8 @@ class DownloadWorker:
 
         return file_name
 
-    def chat_post_to_markdown(self, post: dict, target_dir: Path) -> str:
+    @staticmethod
+    def chat_post_to_markdown(post: dict) -> str:
         title = f"# {post.get('conversation-title', '')}\n\n"
 
         body = post.get('conversation-text', '')
@@ -159,7 +161,7 @@ class DownloadWorker:
             case "Photo":
                 md_content += self.photo_post_to_markdown(post=post, target_dir=target_dir)
             case "Conversation":
-                md_content += self.chat_post_to_markdown(post=post, target_dir=target_dir)
+                md_content += self.chat_post_to_markdown(post=post)
             case _:
                 logger.error(f"Unknown post type: {post_type}")
 
@@ -176,11 +178,13 @@ class DownloadWorker:
         updated_paragraphs = self.replace_img_with_markdown(updated_paragraphs, target_dir)
         return self.update_body(body, img_paragraphs, updated_paragraphs)
 
-    def extract_img_paragraphs(self, body):
+    @staticmethod
+    def extract_img_paragraphs(body):
         img_paragraphs = re.findall(r'<p>.*?<img.*?</p>', body, re.DOTALL)
         return img_paragraphs
 
-    def move_imgs_to_end(self, paragraphs):
+    @staticmethod
+    def move_imgs_to_end(paragraphs):
         updated_paragraphs = []
         img_pattern = re.compile(r'<img.*?>')
 
@@ -216,7 +220,8 @@ class DownloadWorker:
 
         return updated_paragraphs
 
-    def update_body(self, body, old_paragraphs, new_paragraphs):
+    @staticmethod
+    def update_body(body, old_paragraphs, new_paragraphs):
         for old, new in zip(old_paragraphs, new_paragraphs):
             body = body.replace(old, new)
         return body
