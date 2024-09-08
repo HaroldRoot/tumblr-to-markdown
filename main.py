@@ -8,23 +8,18 @@ from pathlib import Path
 import requests
 import xmltodict
 
-import settings
-
 # Configure logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 class DownloadWorker:
-    def __init__(self, proxies: dict[str, str] = None) -> None:
-        self.proxies = proxies
-
     def download_posts(self, name: str, num: int, start: int, target_dir: Path) -> None:
         """Downloads blog posts from Tumblr API."""
         url = f"https://{name}.tumblr.com/api/read?num={num}&start={start}"
         logger.info(f"Fetching URL: {url}")
         try:
-            response = requests.get(url=url, proxies=self.proxies, timeout=settings.TIMEOUT)
+            response = requests.get(url=url, proxies=proxies, timeout=settings['timeout'])
             response.raise_for_status()
             self.process_response(response.content, target_dir)
         except requests.RequestException as e:
@@ -48,9 +43,10 @@ class DownloadWorker:
         except (KeyError, UnicodeDecodeError) as e:
             logger.error(f"Error processing response: {e}")
 
-    def download_image(self, url: str, target_dir: Path) -> None:
+    @staticmethod
+    def download_image(url: str, target_dir: Path) -> None:
         target_dir.mkdir(parents=True, exist_ok=True)
-        response = requests.get(url=url, proxies=self.proxies, timeout=settings.TIMEOUT)
+        response = requests.get(url=url, proxies=proxies, timeout=settings['timeout'])
 
         if response.status_code == 200:
             image_name = url.split('/')[-1]
@@ -226,16 +222,14 @@ class DownloadWorker:
 
 
 class CrawlerScheduler(object):
-    def __init__(self, names: list[str], proxies: dict[str, str] = None) -> None:
-        self.names = names
-        self.proxies = proxies
-        self.worker = DownloadWorker(proxies=self.proxies)
+    def __init__(self) -> None:
+        self.worker = DownloadWorker()
 
     def schedule_tasks(self) -> None:
         """Schedules download tasks for each blog."""
-        with ThreadPoolExecutor(max_workers=settings.THREADS) as executor:
+        with ThreadPoolExecutor(max_workers=settings['threads']) as executor:
             futures = []
-            for name in self.names:
+            for name in names:
                 total = self.get_total_post_count(name)
                 if total > 0:
                     futures.extend(self.schedule_blog_download(executor, name, total))
@@ -249,17 +243,18 @@ class CrawlerScheduler(object):
         target_dir = Path("results") / name
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        num = settings.API_READ_NUM
+        num = settings['api_read_num']
         futures = []
-        for start in range(settings.API_READ_START, total, num):
+        for start in range(settings['api_read_start'], total, num):
             futures.append(executor.submit(self.worker.download_posts, name, num, start, target_dir))
         return futures
 
-    def get_total_post_count(self, name: str) -> int:
+    @staticmethod
+    def get_total_post_count(name: str) -> int:
         """Retrieves the total number of posts for a blog."""
         url = f"https://{name}.tumblr.com/api/read"
         try:
-            response = requests.get(url=url, proxies=self.proxies, timeout=settings.TIMEOUT)
+            response = requests.get(url=url, proxies=proxies, timeout=settings['timeout'])
             response.raise_for_status()
             if response.status_code == 404:
                 logger.warning(f"{name} doesn't exist.")
@@ -278,9 +273,9 @@ def load_config() -> dict:
 
     try:
         with config_file.open("rb") as f:
-            config = tomllib.load(f)
-            logger.info(f"Loaded configuration: {config}")
-            return config
+            toml_config = tomllib.load(f)
+            logger.info(f"Loaded configuration: {toml_config}")
+            return toml_config
     except (IOError, tomllib.TOMLDecodeError) as e:
         logger.error(f"Error reading config file {config_file}: {e}")
         sys.exit(1)
@@ -290,6 +285,7 @@ if __name__ == "__main__":
     config = load_config()
     names = config.get("names", [])
     proxies = config.get("proxies", {})
+    settings = config.get("settings", {})
 
     if not names:
         logger.error('''Please write the site names in the config.toml file.
@@ -297,5 +293,5 @@ For example:
 names = ["name1", "name2"]''')
         sys.exit(1)
 
-    scheduler = CrawlerScheduler(names=names, proxies=proxies)
+    scheduler = CrawlerScheduler()
     scheduler.schedule_tasks()

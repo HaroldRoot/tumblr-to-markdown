@@ -3,3 +3,10 @@ names = []
 [proxies]
 # http = "http://127.0.0.1:61860"
 # https = "http://127.0.0.1:61860"
+
+[settings]
+timeout = 10
+retry = 5
+threads = 10
+api_read_start = 0
+api_read_num = 5
